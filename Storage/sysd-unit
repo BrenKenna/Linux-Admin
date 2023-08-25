@@ -1,0 +1,9 @@
+[Unit]
+Description=Reassemble mount raid array
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /media/raid/reboot-raid-array.sh
+
+[Install]
+WantedBy=multi-user.target
