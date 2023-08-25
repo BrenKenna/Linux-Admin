@@ -5,6 +5,7 @@
 # 
 # ZFS Storage Pools from Loopback Devices
 #
+# => A server can offer its ZPool to a cluster.
 #
 # References:
 # 1). https://ubuntu.com/tutorials/setup-zfs-storage-pool
