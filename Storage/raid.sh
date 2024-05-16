@@ -583,3 +583,389 @@ mdadm: hot removed /dev/loop6 from /dev/md0
 --> Test file integrity after disaster
 5-GB-File: OK
 '''
+
+
+###########################################################
+###########################################################
+# 
+# Logicall Partition Array Device
+# 
+###########################################################
+###########################################################
+
+# Config directory
+RAID_TEST_HOME=/media/raid
+DEVICE_HOME=${RAID_TEST_HOME}/devices
+RAID_MOUNT=/mnt/raid_test/raid_array
+mkdir -p $DEVICE_HOME $RAID_MOUNT && cd ${RAID_TEST_HOME}
+
+
+# Configure 10 logical devices
+for i in {1..10}
+do
+    dd of=${DEVICE_HOME}/disk-${i}.img bs=2M seek=1K count=0
+    losetup -f ${DEVICE_HOME}/disk-${i}.img
+done
+
+
+# Sanity check
+losetup -a
+
+'''
+/dev/loop1: [2064]:7455 (/media/raid/devices/disk-2.img)
+/dev/loop8: [2064]:8231 (/media/raid/devices/disk-9.img)
+/dev/loop6: [2064]:8211 (/media/raid/devices/disk-7.img)
+/dev/loop4: [2064]:8198 (/media/raid/devices/disk-5.img)
+/dev/loop2: [2064]:7458 (/media/raid/devices/disk-3.img)
+/dev/loop0: [2064]:7436 (/media/raid/devices/disk-1.img)
+/dev/loop9: [2064]:8235 (/media/raid/devices/disk-10.img)
+/dev/loop7: [2064]:8220 (/media/raid/devices/disk-8.img)
+/dev/loop5: [2064]:8200 (/media/raid/devices/disk-6.img)
+/dev/loop3: [2064]:8196 (/media/raid/devices/disk-4.img)
+'''
+
+
+# Create array, and sanity check
+DRIVES_FOR_RAID=$(losetup -a | awk -F ':' '{print $1}' | xargs)
+mdadm \
+    --create /dev/md0 \
+    --level 6 \
+    --raid-devices=10 \
+    ${DRIVES_FOR_RAID}
+
+cat /proc/mdstat
+mdadm -D /dev/md0
+
+'''
+
+mdadm: Defaulting to version 1.2 metadata
+mdadm: array /dev/md0 started.
+
+Personalities : [raid0] [raid1] [raid10] [raid6] [raid5] [raid4]
+md0 : active raid6 loop3[9] loop5[8] loop7[7] loop9[6] loop0[5] loop2[4] loop4[3] loop6[2] loop8[1] loop1[0]
+      16752640 blocks super 1.2 level 6, 512k chunk, algorithm 2 [10/10] [UUUUUUUUUU]
+
+unused devices: <none>
+
+
+/dev/md0:
+           Version : 1.2
+     Creation Time : Thu May 16 15:32:53 2024
+        Raid Level : raid6
+        Array Size : 16752640 (15.98 GiB 17.15 GB)
+     Used Dev Size : 2094080 (2045.00 MiB 2144.34 MB)
+      Raid Devices : 10
+     Total Devices : 10
+       Persistence : Superblock is persistent
+
+       Update Time : Thu May 16 17:05:31 2024
+             State : clean
+    Active Devices : 10
+   Working Devices : 10
+    Failed Devices : 0
+     Spare Devices : 0
+
+            Layout : left-symmetric
+        Chunk Size : 512K
+
+Consistency Policy : resync
+
+              Name : bkenna-xps:0  (local to host bkenna-xps)
+              UUID : 4f23a47f:eba3bc71:fa03d77b:1862dd90
+            Events : 17
+
+    Number   Major   Minor   RaidDevice State
+       0       7        1        0      active sync   /dev/loop1
+       1       7        8        1      active sync   /dev/loop8
+       2       7        6        2      active sync   /dev/loop6
+       3       7        4        3      active sync   /dev/loop4
+       4       7        2        4      active sync   /dev/loop2
+       5       7        0        5      active sync   /dev/loop0
+       6       7        9        6      active sync   /dev/loop9
+       7       7        7        7      active sync   /dev/loop7
+       8       7        5        8      active sync   /dev/loop5
+       9       7        3        9      active sync   /dev/loop3
+
+'''
+
+# Configure physical volume, multiple instead?
+RAID_DEVICE="/dev/md0"
+pvcreate ${RAID_DEVICE}
+
+pvs; echo -e "\n"; pvdisplay
+
+'''
+Physical volume "/dev/md0" successfully created.
+
+PV         VG Fmt  Attr PSize   PFree
+  /dev/md0      lvm2 ---  <15.98g <15.98g
+
+
+  "/dev/md0" is a new physical volume of "<15.98 GiB"
+  --- NEW Physical volume ---
+  PV Name               /dev/md0
+  VG Name
+  PV Size               <15.98 GiB
+  Allocatable           NO
+  PE Size               0
+  Total PE              0
+  Free PE               0
+  Allocated PE          0
+  PV UUID               257qdD-OfTQ-J6xL-3VeK-ZsDq-TA8U-zaOz4W
+
+--> After creation of 4 volumes, see there is room for another of same size
+  PV         VG  Fmt  Attr PSize  PFree
+  /dev/md0   vg0 lvm2 a--  15.97g 3.97g
+
+--> Create another see below
+  PV         VG  Fmt  Attr PSize  PFree
+  /dev/md0   vg0 lvm2 a--  15.97g 996.00m
+  
+'''
+
+# Create volume group
+vgcreate vg0 /dev/md0
+
+vgs; echo -e "\n"; vgdisplay
+
+'''
+Volume group "vg0" successfully created
+
+  VG  #PV #LV #SN Attr   VSize  VFree
+  vg0   1   0   0 wz--n- 15.97g 15.97g
+
+  --- Volume group ---
+  VG Name               vg0
+  System ID
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  1
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                0
+  Open LV               0
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               15.97 GiB
+  PE Size               4.00 MiB
+  Total PE              4089
+  Alloc PE / Size       0 / 0
+  Free  PE / Size       4089 / 15.97 GiB
+  VG UUID               RnupIr-LhTJ-5L0N-1C8F-wq3E-KQet-CdtejW
+
+--> After 5th
+  VG  #PV #LV #SN Attr   VSize  VFree
+  vg0   1   5   0 wz--n- 15.97g 996.00m
+
+  --- Volume group ---
+  VG Name               vg0
+  System ID
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  14
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                5
+  Open LV               5
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               15.97 GiB
+  PE Size               4.00 MiB
+  Total PE              4089
+  Alloc PE / Size       3840 / 15.00 GiB
+  Free  PE / Size       249 / 996.00 MiB
+  VG UUID               RnupIr-LhTJ-5L0N-1C8F-wq3E-KQet-CdtejW
+'''
+
+
+# Create logical volumes
+lvcreate --zero n -n data0 -L 3G vg0
+lvcreate  --zero n -n data1 -L 3G vg0
+
+lvcreate --zero n -n logging0 -L 3G vg0
+lvcreate  --zero n -n logging1 -L 3G vg0
+
+lvcreate  --zero n -n cache0 -L 3G vg0
+
+lvs; echo -e "\n"; lvdisplay
+
+'''
+WARNING: Logical volume vg0/data0 not zeroed.
+  Logical volume "data0" created.
+
+WARNING: Logical volume vg0/data1 not zeroed.
+  Logical volume "data1" created.
+
+WARNING: Logical volume vg0/logging0 not zeroed.
+  Logical volume "logging0" created.
+
+WARNING: Logical volume vg0/logging1 not zeroed.
+  Logical volume "logging1" created.
+
+WARNING: Logical volume vg0/cache0 not zeroed.
+  Logical volume "cache0" created.
+
+LV       VG  Attr       LSize Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  data     vg0 -wi-a----- 3.00g
+  data0    vg0 -wi-a----- 3.00g
+  logging0 vg0 -wi-a----- 3.00g
+  logging1 vg0 -wi-a----- 3.00g
+
+
+  --- Logical volume ---
+  LV Path                /dev/vg0/data0
+  LV Name                data0
+  VG Name                vg0
+  LV UUID                YnqtEy-QEN5-yVZ3-eK6k-QuJP-LuLP-7P5kdm
+  LV Write Access        read/write
+  LV Creation host, time bkenna-xps, 2024-05-16 15:57:17 +0100
+  LV Status              available
+  # open                 0
+  LV Size                3.00 GiB
+  Current LE             768
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     16384
+  Block device           252:0
+
+  --- Logical volume ---
+  LV Path                /dev/vg0/data1
+  LV Name                data1
+  VG Name                vg0
+  LV UUID                tY4DfH-Wa46-seKI-VFCm-U2un-8zXy-38FLHR
+  LV Write Access        read/write
+  LV Creation host, time bkenna-xps, 2024-05-16 15:58:33 +0100
+  LV Status              available
+  # open                 0
+  LV Size                3.00 GiB
+  Current LE             768
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     16384
+  Block device           252:1
+
+  --- Logical volume ---
+  LV Path                /dev/vg0/logging0
+  LV Name                logging0
+  VG Name                vg0
+  LV UUID                uEn8Vv-6GFt-3WM7-1W1V-zod2-Twro-yAOmn0
+  LV Write Access        read/write
+  LV Creation host, time bkenna-xps, 2024-05-16 15:58:49 +0100
+  LV Status              available
+  # open                 0
+  LV Size                3.00 GiB
+  Current LE             768
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     16384
+  Block device           252:2
+
+  --- Logical volume ---
+  LV Path                /dev/vg0/logging1
+  LV Name                logging1
+  VG Name                vg0
+  LV UUID                SzlJAj-wNmS-TTxg-GVGe-kY9o-cfN5-1VVRlZ
+  LV Write Access        read/write
+  LV Creation host, time bkenna-xps, 2024-05-16 15:58:52 +0100
+  LV Status              available
+  # open                 0
+  LV Size                3.00 GiB
+  Current LE             768
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     16384
+  Block device           252:3
+'''
+
+
+# Make filesystem on each: 
+vgchange -ay vg0 # This and below cause loopback device?
+dmsetup mknodes
+
+mkfs.xfs /dev/mapper/vg0-data # would usually be /dev/vg0/data0
+mkfs.xfs /dev/mapper/vg0-data1
+
+mkfs.xfs /dev/mapper/vg0-logging0
+mkfs.xfs /dev/mapper/vg0-logging1
+
+mkfs.xfs /dev/mapper/vg0-cache0
+
+'''
+  4 logical volume(s) in volume group "vg0" now active
+  5 logical volume(s) in volume group "vg0" now active
+
+meta-data=/dev/mapper/vg0-logging0 isize=512    agcount=8, agsize=98176 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1    bigtime=0 inobtcount=0
+data     =                       bsize=4096   blocks=785408, imaxpct=25
+         =                       sunit=128    swidth=1024 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=2560, version=2
+         =                       sectsz=512   sunit=8 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+
+meta-data=/dev/mapper/vg0-cache0 isize=512    agcount=8, agsize=98176 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1    bigtime=0 inobtcount=0
+data     =                       bsize=4096   blocks=785408, imaxpct=25
+         =                       sunit=128    swidth=1024 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=2560, version=2
+         =                       sectsz=512   sunit=8 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+'''
+
+# Mount each
+for DEV in $(ls /dev/mapper/ | grep "vg0")
+do
+    NAME=$(echo $DEV | sed 's/vg0-//g')
+    mkdir -p /mnt/${NAME}
+    mount /dev/mapper/${DEV} /mnt/$NAME
+done
+
+df -h
+
+'''
+Filesystem                Size  Used Avail Use% Mounted on
+/dev/sdb                  251G  2.7G  236G   2% /
+
+/dev/mapper/vg0-data0     3.0G   54M  3.0G   2% /mnt/data0
+/dev/mapper/vg0-data1     3.0G   54M  3.0G   2% /mnt/data1
+/dev/mapper/vg0-logging0  3.0G   54M  3.0G   2% /mnt/logging0
+/dev/mapper/vg0-logging1  3.0G   54M  3.0G   2% /mnt/logging1
+/dev/mapper/vg0-cache0    3.0G   54M  3.0G   2% /mnt/cache0
+'''
+
+
+# Write file and check
+fallocate -l 1.5G /mnt/data0/test-file.img
+fallocate -l 1G /mnt/data1/test-file.img
+
+fallocate -l 2G /mnt/logging0/test-file.img
+fallocate -l 2.5G /mnt/logging1/test-file.img
+
+df -h
+'''
+Filesystem                Size  Used Avail Use% Mounted on
+/dev/mapper/vg0-data0     3.0G  1.6G  1.5G  52% /mnt/data0
+/dev/mapper/vg0-data1     3.0G  1.1G  2.0G  36% /mnt/data1
+/dev/mapper/vg0-logging0  3.0G  2.1G  957M  69% /mnt/logging0
+/dev/mapper/vg0-logging1  3.0G  2.6G  445M  86% /mnt/logging1
+'''
+
+
+
+
+
+
